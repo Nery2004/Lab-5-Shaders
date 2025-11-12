@@ -86,4 +86,4 @@ git clone [URL del repositorio]
 - Los patrones y colores se generan proceduralmente usando noise functions y algoritmos matemáticos
 
 ## Autor
-Nery Molina
+Nery Molina 23218

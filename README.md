@@ -1,128 +1,89 @@
-# Renderizador 3D de Modelos OBJ en Rust
+# Laboratorio de Shaders - Cuerpos Celestes
 
-Motor de renderizado 3D por software desarrollado en Rust que permite visualizar archivos Wavefront OBJ mediante rasterización de triángulos, con soporte para transformaciones espaciales e iluminación dinámica.
+## Objetivo
+Este laboratorio tiene como objetivo practicar la creación de shaders interesantes variando únicamente colores utilizando los parámetros disponibles, sin hacer uso de texturas o materiales externos.
 
-## ✨ Funcionalidades Principales
+## Descripción
+Se han creado tres cuerpos celestes diferentes utilizando exclusivamente shaders:
 
-- **Importación de archivos OBJ**: Procesamiento completo de geometría en formato Wavefront
-- **Renderizado basado en triángulos**: Algoritmo de rasterización implementado con coordenadas baricéntricas
-- **Manipulación espacial 3D**: Movimiento, rotación y ajuste de escala en tiempo real
-- **Buffer de profundidad**: Algoritmo Z-Buffer para resolución de oclusión geométrica
-- **Sistema de iluminación**: Motor de iluminación con luz ambiente y difusa
-- **Interacción por mouse y teclado**: Control completo de cámara y transformaciones
+1. **Estrella (Sol)** - Una estrella que sirve como el sol del sistema solar
+2. **Planeta Rocoso** - Un planeta con características terrestres y superficie sólida
+3. **Gigante Gaseoso** - Un planeta masivo compuesto principalmente de gases
 
-## 🛠️ Stack Tecnológico
+## Características Implementadas
 
-- **Rust** - Lenguaje de sistemas para alto rendimiento
-- **nalgebra-glm** - Librería de álgebra lineal para gráficos 3D
-- **minifb** - Framework para gestión de ventanas y buffer de píxeles
-- **tobj** - Parser de archivos de geometría OBJ
-- **image** - Procesamiento y exportación de imágenes
+### Estrella (Sol)
+- Patrones de llamaradas solares animadas
+- Efectos de corona solar
+- Gradientes de color que simulan la intensidad del calor
+- Animación de superficie turbulenta
 
-## 📋 Prerrequisitos
+### Planeta Rocoso
+- Patrones de continentes y océanos
+- Efectos de atmósfera tenue
+- Variaciones de terreno (montañas, llanuras)
+- Colores naturales que simulan tierra y agua
 
-- Rust 1.70 o versión posterior
-- Modelo 3D `CazaTie.obj` ubicado en el directorio `assets/`
+### Gigante Gaseoso
+- Bandas atmosféricas características
+- Patrones de tormentas y remolinos
+- Efectos de profundidad atmosférica
+- Colores vibrantes y dinámicos
 
-## 🚀 Inicio Rápido
+## Tecnologías Utilizadas
+- WebGL
+- GLSL (OpenGL Shading Language)
+- JavaScript
+- HTML5 Canvas
 
+## Instrucciones de Ejecución
+
+1. Clonar el repositorio:
 ```bash
-# Clonar este repositorio
-git clone https://github.com/Nery2004/Carga-de-modelos.git
-cd Carga-de-modelos
-
-# Compilar y lanzar en modo optimizado
-cargo run --release
+git clone [URL del repositorio]
 ```
 
-## 🎮 Controles de Usuario
+2. Abrir el archivo `index.html` en un navegador web compatible con WebGL
 
-### Teclado
-| Control | Función |
-|---------|---------|
-| `Flechas` | Desplazar modelo en pantalla |
-| `A / S` | Reducir / Aumentar escala |
-| `Q / W` | Rotación en eje X (pitch) |
-| `E / R` | Rotación en eje Y (yaw) |
-| `T / Y` | Rotación en eje Z (roll) |
-| `ESC` | Cerrar aplicación |
+3. Utilizar los botones de la interfaz para alternar entre los diferentes shaders:
+   - Botón "Sol" - Muestra la estrella
+   - Botón "Planeta Rocoso" - Muestra el planeta terrestre
+   - Botón "Gigante Gaseoso" - Muestra el planeta gaseoso
 
-### Mouse
-| Control | Función |
-|---------|---------|
-| `Botón izquierdo + Arrastrar` | Rotar modelo libremente |
-
-## 📁 Arquitectura del Proyecto
-
+## Estructura del Proyecto
 ```
-Carga-de-modelos/
-├── Cargo.toml              # Configuración de dependencias
-├── assets/
-│   └── CazaTie.obj         # Archivo de geometría 3D
-└── src/
-    ├── main.rs             # Ciclo principal de renderizado
-    ├── obj.rs              # Parser de archivos OBJ
-    ├── vertex.rs           # Definición de vértices
-    ├── triangle.rs         # Motor de rasterización
-    ├── shaders.rs          # Transformaciones de vértices
-    ├── framebuffer.rs      # Gestión de buffers de imagen
-    ├── fragment.rs         # Procesamiento de píxeles
-    ├── color.rs            # Manejo de colores RGB
-    └── line.rs             # Algoritmo de líneas
+/
+├── index.html          # Archivo principal
+├── js/
+│   ├── renderer.js     # Motor de renderizado
+│   ├── shaders.js      # Gestión de shaders
+│   └── main.js         # Lógica principal
+├── glsl/
+│   ├── star.frag       # Shader de la estrella
+│   ├── rocky.frag      # Shader del planeta rocoso
+│   └── gasgiant.frag   # Shader del gigante gaseoso
+└── README.md
 ```
 
-## 🔄 Flujo de Renderizado
+## Requisitos del Sistema
+- Navegador web moderno con soporte para WebGL
+- JavaScript habilitado
 
-El proceso de renderizado sigue estas etapas:
+## Capturas de Pantalla
 
-1. **Importación**: Lectura del archivo OBJ y construcción de malla de vértices
-2. **Transformación de vértices**: Aplicación de matrices de modelo-vista-proyección
-3. **Ensamblado de primitivas**: Construcción de triángulos a partir de índices
-4. **Rasterización**: Conversión de geometría vectorial a píxeles discretos
-5. **Sombreado de fragmentos**: Cálculo de color final con iluminación
-6. **Test de profundidad**: Resolución de visibilidad mediante Z-Buffer
+### Estrella (Sol)
+![Sol](screenshots/star.png)
 
-## 💡 Detalles de Implementación
+### Planeta Rocoso
+![Planeta Rocoso](screenshots/rocky_planet.png)
 
-### Procesamiento de Geometría
-```rust
-// Iteración sobre cada triángulo de la malla
-for triangle_idx in (0..indices.len()).step_by(3) {
-    let i1 = indices[triangle_idx] as usize;
-    let i2 = indices[triangle_idx + 1] as usize; 
-    let i3 = indices[triangle_idx + 2] as usize;
-    
-    // Extraer vértices transformados
-    let v1 = &transformed_vertices[i1];
-    let v2 = &transformed_vertices[i2];
-    let v3 = &transformed_vertices[i3];
-    
-    // Generar fragmentos rasterizados
-    let fragments = triangle(v1, v2, v3);
-}
-```
+### Gigante Gaseoso
+![Gigante Gaseoso](screenshots/gas_giant.png)
 
-### Algoritmo de Rasterización
-- **Delimitación espacial**: Cálculo de bounding box para optimizar procesamiento
-- **Test de inclusión**: Uso de coordenadas baricéntricas para determinar cobertura de píxeles
-- **Interpolación de atributos**: Suavizado de propiedades geométricas entre vértices
+## Notas de Desarrollo
+- Todos los efectos visuales se logran exclusivamente mediante programación de shaders
+- No se utilizaron texturas externas ni materiales predefinidos
+- Los patrones y colores se generan proceduralmente usando noise functions y algoritmos matemáticos
 
-### Modelo de Iluminación
-- **Componente ambiental**: Iluminación base uniforme (50%)
-- **Componente difusa**: Cálculo mediante producto escalar de normales y dirección de luz
-- **Resultado final**: Combinación ponderada para iluminación equilibrada
-
-## 🎨 Configuración Visual
-
-- **Entorno de fondo**: Tono azul espacial (#001122)
-- **Material del modelo**: Gris medio con respuesta de iluminación realista
-- **Modelo de sombreado**: Mezcla de luz ambiente y difusa para apariencia uniforme
-- **Sensibilidad de mouse**: Factor de 0.005 para rotación suave
-
-## 📸 Galería Visual
-
-![Caza TIE - Renderizado 3D](Cazatie.png)
-
-
-
-
+## Autor
+Nery Molina

@@ -1,26 +1,27 @@
 use nalgebra_glm::{Vec3, Mat4};
-use minifb::{Key, Window, WindowOptions, MouseButton, MouseMode};
+use minifb::{Key, Window, WindowOptions};
 use std::time::Duration;
 use std::f32::consts::PI;
 
 mod framebuffer;
 mod triangle;
-mod line;
 mod vertex;
 mod obj;
 mod color;
-mod fragment;
 mod shaders;
+mod fragment;
 
 use framebuffer::Framebuffer;
 use vertex::Vertex;
 use obj::Obj;
 use triangle::triangle;
-use shaders::vertex_shader;
+use shaders::{vertex_shader, shade_star, shade_rocky, shade_gas_giant};
 use color::Color;
 
 pub struct Uniforms {
     model_matrix: Mat4,
+    time: f32,
+    shader_type: u32, // 0 = star, 1 = rocky, 2 = gas_giant
 }
 
 fn create_model_matrix(translation: Vec3, scale: f32, rotation: Vec3) -> Mat4 {
@@ -61,7 +62,7 @@ fn create_model_matrix(translation: Vec3, scale: f32, rotation: Vec3) -> Mat4 {
     transform_matrix * rotation_matrix
 }
 
-fn render_nave(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertices: &[Vertex], indices: &[u32]) {
+fn render_sphere(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertices: &[Vertex], indices: &[u32]) {
     
     // Vertex Shader Stage - transformar todos los vértices
     let mut transformed_vertices = Vec::with_capacity(vertices.len());
@@ -87,16 +88,30 @@ fn render_nave(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertices: &[V
                 // Dibujar el triángulo
                 let fragments = triangle(v1, v2, v3);
                 
-                // Procesar fragmentos
+                // Procesar fragmentos - Aquí aplicamos los shaders procedurales
                 for fragment in fragments {
                     let x = fragment.position.x as usize;
                     let y = fragment.position.y as usize;
                     if x < framebuffer.width && y < framebuffer.height {
-                        let color = fragment.color.to_hex();
+                        // Aplicar el shader correspondiente según el tipo
+                        let shader_color = match uniforms.shader_type {
+                            0 => shade_star(fragment.vertex_position, uniforms.time),
+                            1 => shade_rocky(fragment.vertex_position, uniforms.time),
+                            2 => shade_gas_giant(fragment.vertex_position, uniforms.time),
+                            _ => Vec3::new(1.0, 1.0, 1.0), // Blanco por defecto
+                        };
+                        
+                        // Convertir Vec3 (0.0-1.0) a color hex
+                        let r = (shader_color.x * 255.0).clamp(0.0, 255.0) as u32;
+                        let g = (shader_color.y * 255.0).clamp(0.0, 255.0) as u32;
+                        let b = (shader_color.z * 255.0).clamp(0.0, 255.0) as u32;
+                        let color = (r << 16) | (g << 8) | b;
+                        
                         framebuffer.set_current_color(color);
                         framebuffer.point(x, y, fragment.depth);
                     }
                 }
+            }
             }
         }
     }
@@ -111,7 +126,7 @@ fn main() {
 
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
     let mut window = Window::new(
-        "Proyecto 1 - Nave Espacial",
+        "Lab 5 - Shaders de Cuerpos Celestes",
         window_width,
         window_height,
         WindowOptions::default(),
@@ -122,67 +137,80 @@ fn main() {
     window.update();
 
     // Configurar colores
-    framebuffer.set_background_color(0x001122); // Fondo negro para el espacio
+    framebuffer.set_background_color(0x000000); // Fondo negro para el espacio
     
     // Parámetros de transformación
-    let mut translation = Vec3::new(400.0, 300.0, 0.0); // Centrar en pantalla
+    let translation = Vec3::new(400.0, 300.0, 0.0); // Centrar en pantalla
     let mut rotation = Vec3::new(0.0, 0.0, 0.0);
-    let mut scale = 100.0f32;
+    let scale = 200.0f32;
 
-    // Cargar el modelo de la nave
-    let obj = match Obj::load("assets/CazaTie.obj") {
+    // Cargar el modelo de la esfera
+    let obj = match Obj::load("assets/sphere.obj") {
         Ok(obj) => {
-            println!("¡Modelo CazaTie.obj cargado exitosamente!");
+            println!("¡Modelo sphere.obj cargado exitosamente!");
             obj
         },
         Err(e) => {
-            eprintln!("Error cargando CazaTie.obj: {:?}", e);
-            eprintln!("Asegúrate de que el archivo assets/CazaTie.obj existe");
+            eprintln!("Error cargando sphere.obj: {:?}", e);
+            eprintln!("Asegúrate de que el archivo assets/sphere.obj existe");
             return;
         }
     };
 
     let (vertices, indices) = obj.get_vertex_and_index_arrays();
-    println!("Nave cargada: {} vértices, {} triángulos", vertices.len(), indices.len() / 3);
+    println!("Esfera cargada: {} vértices, {} triángulos", vertices.len(), indices.len() / 3);
 
-    // Variables para el control del mouse
-    let mut last_mouse_pos: Option<(f32, f32)> = None;
-    let mouse_sensitivity = 0.005;
+    // Variable para controlar el shader activo
+    let mut current_shader: u32 = 0; // 0 = star, 1 = rocky, 2 = gas_giant
+    let mut time = 0.0f32;
+
+    println!("\n=== CONTROLES ===");
+    println!("1: Estrella (Sol)");
+    println!("2: Planeta Rocoso");
+    println!("3: Gigante Gaseoso");
+    println!("A/D: Rotar en eje Y");
+    println!("W/S: Rotar en eje X");
+    println!("ESC: Salir");
+    println!("=================\n");
 
     while window.is_open() {
         if window.is_key_down(Key::Escape) {
             break;
         }
 
-        // Manejar rotación con el mouse
-        if let Some((mx, my)) = window.get_mouse_pos(MouseMode::Clamp) {
-            if window.get_mouse_down(MouseButton::Left) {
-                if let Some((last_x, last_y)) = last_mouse_pos {
-                    let delta_x = mx - last_x;
-                    let delta_y = my - last_y;
-                    
-                    // Rotar el modelo basado en el movimiento del mouse
-                    rotation.y += delta_x * mouse_sensitivity; // rotación horizontal (yaw)
-                    rotation.x += delta_y * mouse_sensitivity; // rotación vertical (pitch)
-                }
-                last_mouse_pos = Some((mx, my));
-            } else {
-                last_mouse_pos = None;
-            }
+        // Cambiar shader con teclas numéricas
+        if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) {
+            current_shader = 0;
+            println!("Shader activo: Estrella (Sol)");
+        }
+        if window.is_key_pressed(Key::Key2, minifb::KeyRepeat::No) {
+            current_shader = 1;
+            println!("Shader activo: Planeta Rocoso");
+        }
+        if window.is_key_pressed(Key::Key3, minifb::KeyRepeat::No) {
+            current_shader = 2;
+            println!("Shader activo: Gigante Gaseoso");
         }
 
-        handle_input(&window, &mut translation, &mut rotation, &mut scale);
+        // Control de rotación
+        handle_input(&window, &mut rotation);
+
+        // Actualizar tiempo para animación
+        time += 0.016; // Aproximadamente 60 FPS
 
         // Limpiar framebuffer
         framebuffer.clear();
 
         // Crear matriz de transformación
         let model_matrix = create_model_matrix(translation, scale, rotation);
-        let uniforms = Uniforms { model_matrix };
+        let uniforms = Uniforms { 
+            model_matrix,
+            time,
+            shader_type: current_shader,
+        };
 
-        // Renderizar la nave
-        framebuffer.set_current_color(0xFFDD44); // Color blanco para la nave
-        render_nave(&mut framebuffer, &uniforms, &vertices, &indices);
+        // Renderizar la esfera con el shader activo
+        render_sphere(&mut framebuffer, &uniforms, &vertices, &indices);
 
         // Actualizar ventana
         window
@@ -195,53 +223,20 @@ fn main() {
     println!("¡Renderizado completado!");
 }
 
-fn handle_input(window: &Window, translation: &mut Vec3, rotation: &mut Vec3, scale: &mut f32) {
-    let move_speed = 5.0;
-    let rotation_speed = PI / 30.0;
-    let scale_speed = 2.0;
-
-    // Movimiento
-    if window.is_key_down(Key::Right) {
-        translation.x += move_speed;
-    }
-    if window.is_key_down(Key::Left) {
-        translation.x -= move_speed;
-    }
-    if window.is_key_down(Key::Up) {
-        translation.y -= move_speed;
-    }
-    if window.is_key_down(Key::Down) {
-        translation.y += move_speed;
-    }
-
-    // Escala
-    if window.is_key_down(Key::S) {
-        *scale += scale_speed;
-    }
-    if window.is_key_down(Key::A) {
-        *scale -= scale_speed;
-        if *scale < 1.0 {
-            *scale = 1.0;
-        }
-    }
+fn handle_input(window: &Window, rotation: &mut Vec3) {
+    let rotation_speed = PI / 60.0;
 
     // Rotación
-    if window.is_key_down(Key::Q) {
-        rotation.x -= rotation_speed;
-    }
-    if window.is_key_down(Key::W) {
-        rotation.x += rotation_speed;
-    }
-    if window.is_key_down(Key::E) {
+    if window.is_key_down(Key::A) {
         rotation.y -= rotation_speed;
     }
-    if window.is_key_down(Key::R) {
+    if window.is_key_down(Key::D) {
         rotation.y += rotation_speed;
     }
-    if window.is_key_down(Key::T) {
-        rotation.z -= rotation_speed;
+    if window.is_key_down(Key::W) {
+        rotation.x -= rotation_speed;
     }
-    if window.is_key_down(Key::Y) {
-        rotation.z += rotation_speed;
+    if window.is_key_down(Key::S) {
+        rotation.x += rotation_speed;
     }
 }

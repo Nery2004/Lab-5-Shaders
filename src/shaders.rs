@@ -74,24 +74,28 @@ fn fbm(p: Vec3, octaves: i32, persistence: f32, lacunarity: f32) -> f32 {
 pub fn shade_star(point: Vec3, time: f32) -> Vec3 {
     let uv = point.normalize();
     
-    let mut color = Vec3::new(1.0, 1.0, 0.8);
+    // Colores del sol más realistas: amarillo-naranja brillante
+    let mut color = Vec3::new(1.0, 0.9, 0.3); // Amarillo brillante
     let dist_to_center = uv.magnitude();
-    color *= 1.0 - (dist_to_center * 0.8).powf(2.0);
+    color *= 1.2 - (dist_to_center * 0.6).powf(2.0); // Núcleo muy brillante
 
-    let radial_grad = (1.0 - uv.magnitude()).powf(3.0);
-    let grad_color = Vec3::new(1.0, 0.5, 0.0);
-    color = color.lerp(&grad_color, radial_grad);
+    // Gradiente radial hacia naranja en los bordes
+    let radial_grad = (1.0 - uv.magnitude()).powf(2.5);
+    let grad_color = Vec3::new(1.0, 0.6, 0.1); // Naranja intenso
+    color = color.lerp(&grad_color, radial_grad * 0.7);
 
+    // Turbulencia de superficie solar (menos que antes)
     let turbulence_freq = 3.0;
     let turbulence_speed = 0.5;
     let turbulence = fbm(uv * turbulence_freq + Vec3::new(0.0, 0.0, time * turbulence_speed), 2, 0.5, 2.0);
-    let flame_color = Vec3::new(1.0, 0.2, 0.0);
-    color = color.lerp(&flame_color, turbulence * 0.5);
+    let flame_color = Vec3::new(1.0, 0.5, 0.0); // Naranja-rojo
+    color = color.lerp(&flame_color, turbulence * 0.3);
 
-    let pulse = ((time * 2.0).sin() * 0.5 + 0.5) * 0.2 + 0.9;
+    // Pulsación sutil
+    let pulse = ((time * 1.5).sin() * 0.5 + 0.5) * 0.15 + 0.95; // Varía entre 0.95 y 1.1
     color *= pulse;
 
-    color.map(|x| x.max(0.0).min(1.0))
+    color.map(|x| x.max(0.0).min(1.5)) // Permitir valores > 1.0 para brillo extra
 }
 
 pub fn shade_rocky(point: Vec3, time: f32) -> Vec3 {

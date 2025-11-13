@@ -1,4 +1,4 @@
-use nalgebra_glm::{Vec2, Vec3};
+use nalgebra_glm::{Vec2, Vec3, Vec4};
 use crate::color::Color;
 
 #[derive(Clone, Debug)]
@@ -7,7 +7,7 @@ pub struct Vertex {
   pub normal: Vec3,
   pub tex_coords: Vec2,
   pub color: Color,
-  pub transformed_position: Vec3,
+  pub transformed_position: Vec4,
   pub transformed_normal: Vec3,
 }
 
@@ -18,7 +18,7 @@ impl Vertex {
       normal,
       tex_coords,
       color: Color::black(),
-      transformed_position: position,
+      transformed_position: Vec4::new(position.x, position.y, position.z, 1.0),
       transformed_normal: normal,
     }
   }
@@ -29,12 +29,12 @@ impl Vertex {
       normal: Vec3::new(0.0, 0.0, 0.0),
       tex_coords: Vec2::new(0.0, 0.0),
       color,
-      transformed_position: Vec3::new(0.0, 0.0, 0.0),
+      transformed_position: Vec4::new(0.0, 0.0, 0.0, 1.0),
       transformed_normal: Vec3::new(0.0, 0.0, 0.0),
     }
   }
 
-  pub fn set_transformed(&mut self, position: Vec3, normal: Vec3) {
+  pub fn set_transformed(&mut self, position: Vec4, normal: Vec3) {
     self.transformed_position = position;
     self.transformed_normal = normal;
   }
@@ -47,7 +47,7 @@ impl Default for Vertex {
       normal: Vec3::new(0.0, 1.0, 0.0),
       tex_coords: Vec2::new(0.0, 0.0),
       color: Color::black(),
-      transformed_position: Vec3::new(0.0, 0.0, 0.0),
+      transformed_position: Vec4::new(0.0, 0.0, 0.0, 1.0),
       transformed_normal: Vec3::new(0.0, 1.0, 0.0),
     }
   }

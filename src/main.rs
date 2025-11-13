@@ -181,7 +181,7 @@ fn render_model(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertices: &[
                     0 => shade_star(fragment.vertex_position, uniforms.time),
                     1 => shade_rocky(fragment.vertex_position, uniforms.time),
                     2 => shade_gas_giant(fragment.vertex_position, uniforms.time),
-                    _ => Vec3::new(1.0, 1.0, 1.0),
+                    _ => Vec3::new(0.6, 0.6, 0.7), // Gris para la nave
                 };
 
                 let r = (color_vec.x * 255.0).clamp(0.0, 255.0) as u32;
@@ -207,9 +207,13 @@ fn main() {
 
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     
-    // Load planet model for all celestial bodies
+    // Load planet model for celestial bodies
     let planet_obj = Obj::load("assets/planeta.obj").expect("No se pudo cargar planeta.obj");
     let (planet_vertices, planet_indices) = planet_obj.get_vertex_and_index_arrays();
+
+    // Load spaceship model
+    let nave_obj = Obj::load("assets/CazaTie.obj").expect("No se pudo cargar CazaTie.obj");
+    let (nave_vertices, nave_indices) = nave_obj.get_vertex_and_index_arrays();
 
     let projection_matrix = perspective(WIDTH as f32 / HEIGHT as f32, 45.0 * PI / 180.0, 0.1, 100.0);
     let viewport_matrix = create_viewport_matrix(WIDTH as f32, HEIGHT as f32);
@@ -248,9 +252,9 @@ fn main() {
 
         let view_matrix = camera.get_view_matrix();
 
-        // Render Sun (center)
-        let sun_rotation = Vec3::new(0.0, time * 0.2, 0.0);
-        let sun_model = create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 1.5, sun_rotation);
+        // Render Sun (center, no rotation, bigger size)
+        let sun_rotation = Vec3::new(0.0, 0.0, 0.0); // No rotation
+        let sun_model = create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 2.5, sun_rotation);
         let sun_uniforms = Uniforms {
             model_matrix: sun_model,
             view_matrix,
@@ -300,6 +304,26 @@ fn main() {
             shader_type: 2, // Gas giant shader
         };
         render_model(&mut framebuffer, &gas_uniforms, &planet_vertices, &planet_indices);
+
+        // Render Spaceship (TIE Fighter)
+        let nave_angle = time * 0.4;
+        let nave_orbit_radius = 5.5;
+        let nave_pos = Vec3::new(
+            nave_angle.sin() * nave_orbit_radius,
+            -0.5,
+            nave_angle.cos() * nave_orbit_radius,
+        );
+        let nave_rotation = Vec3::new(0.0, -nave_angle, 0.0); // Face forward in orbit
+        let nave_model = create_model_matrix(nave_pos, 0.3, nave_rotation);
+        let nave_uniforms = Uniforms {
+            model_matrix: nave_model,
+            view_matrix,
+            projection_matrix,
+            viewport_matrix,
+            time,
+            shader_type: 3, // No shader (default color)
+        };
+        render_model(&mut framebuffer, &nave_uniforms, &nave_vertices, &nave_indices);
 
         window
             .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)

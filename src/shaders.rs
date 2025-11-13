@@ -165,3 +165,72 @@ pub fn shade_spaceship(_point: Vec3, _time: f32) -> Vec3 {
     // Color gris uniforme para toda la nave
     Vec3::new(0.5, 0.5, 0.5)
 }
+
+pub fn shade_ice_planet(point: Vec3, time: f32) -> Vec3 {
+    let uv = point.normalize();
+    
+    // Planeta helado con grietas y hielo
+    let base_freq = 3.0;
+    let n = fbm(uv * base_freq + Vec3::new(0.0, time * 0.05, 0.0), 3, 0.5, 2.0);
+    
+    let ice_color = Vec3::new(0.8, 0.9, 1.0);
+    let crack_color = Vec3::new(0.3, 0.4, 0.6);
+    
+    let mut color = ice_color.lerp(&crack_color, n * 0.6);
+    
+    // Añadir detalles de nieve
+    let detail = noise(uv * 8.0);
+    color = color.lerp(&Vec3::new(1.0, 1.0, 1.0), detail * 0.3);
+    
+    color.map(|x| x.max(0.0).min(1.0))
+}
+
+pub fn shade_desert_planet(point: Vec3, time: f32) -> Vec3 {
+    let uv = point.normalize();
+    
+    // Planeta desértico con dunas
+    let base_freq = 4.0;
+    let n = fbm(uv * base_freq + Vec3::new(time * 0.02, 0.0, 0.0), 2, 0.6, 2.0);
+    
+    let sand_light = Vec3::new(0.9, 0.7, 0.3);
+    let sand_dark = Vec3::new(0.6, 0.4, 0.1);
+    
+    let mut color = sand_dark.lerp(&sand_light, n.powf(0.8));
+    
+    // Dunas de arena
+    let dunes = (uv.y * 10.0 + noise(uv * 6.0) * 2.0).sin() * 0.5 + 0.5;
+    color = color.lerp(&Vec3::new(0.95, 0.8, 0.4), dunes * 0.3);
+    
+    color.map(|x| x.max(0.0).min(1.0))
+}
+
+pub fn shade_volcanic_planet(point: Vec3, time: f32) -> Vec3 {
+    let uv = point.normalize();
+    
+    // Planeta volcánico con lava
+    let base_freq = 3.0;
+    let n = fbm(uv * base_freq, 3, 0.5, 2.0);
+    
+    let rock_color = Vec3::new(0.2, 0.15, 0.1);
+    let lava_color = Vec3::new(1.0, 0.3, 0.0);
+    
+    let threshold = 0.45;
+    let mut color;
+    
+    if n > threshold {
+        // Zonas de lava
+        let lava_factor = (n - threshold) / (1.0 - threshold);
+        color = rock_color.lerp(&lava_color, lava_factor.powf(2.0));
+        
+        // Pulsación de lava
+        let pulse = (time * 2.0 + uv.x * 5.0).sin() * 0.5 + 0.5;
+        color = color.lerp(&Vec3::new(1.0, 0.5, 0.0), pulse * lava_factor * 0.4);
+    } else {
+        // Roca oscura
+        color = rock_color;
+        let detail = noise(uv * 10.0);
+        color = color.lerp(&Vec3::new(0.3, 0.25, 0.2), detail * 0.3);
+    }
+    
+    color.map(|x| x.max(0.0).min(1.0))
+}

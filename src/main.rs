@@ -14,7 +14,8 @@ use framebuffer::Framebuffer;
 use vertex::Vertex;
 use obj::Obj;
 use triangle::triangle;
-use shaders::{vertex_shader, shade_star, shade_rocky, shade_gas_giant, shade_spaceship};
+use shaders::{vertex_shader, shade_star, shade_rocky, shade_gas_giant, shade_spaceship, 
+              shade_ice_planet, shade_desert_planet, shade_volcanic_planet};
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -182,6 +183,9 @@ fn render_model(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertices: &[
                     1 => shade_rocky(fragment.vertex_position, uniforms.time),
                     2 => shade_gas_giant(fragment.vertex_position, uniforms.time),
                     3 => shade_spaceship(fragment.vertex_position, uniforms.time),
+                    4 => shade_ice_planet(fragment.vertex_position, uniforms.time),
+                    5 => shade_desert_planet(fragment.vertex_position, uniforms.time),
+                    6 => shade_volcanic_planet(fragment.vertex_position, uniforms.time),
                     _ => Vec3::new(0.5, 0.5, 0.5), // Gris por defecto
                 };
 
@@ -241,14 +245,19 @@ fn main() {
         if window.is_key_down(Key::Space) { camera.move_up(); }
         if window.is_key_down(Key::LeftShift) { camera.move_down(); }
 
-        // Mouse camera control
-        if let Some((mx, my)) = window.get_mouse_pos(MouseMode::Discard) {
-            if let Some((last_x, last_y)) = last_mouse_pos {
-                let delta_x = mx - last_x;
-                let delta_y = my - last_y;
-                camera.update_rotation(delta_x, delta_y);
+        // Mouse camera control - solo cuando se presiona botón derecho
+        if window.get_mouse_down(minifb::MouseButton::Right) {
+            if let Some((mx, my)) = window.get_mouse_pos(MouseMode::Discard) {
+                if let Some((last_x, last_y)) = last_mouse_pos {
+                    let delta_x = mx - last_x;
+                    let delta_y = my - last_y;
+                    camera.update_rotation(delta_x, delta_y);
+                }
+                last_mouse_pos = Some((mx, my));
             }
-            last_mouse_pos = Some((mx, my));
+        } else {
+            // Resetear posición del mouse cuando se suelta el botón
+            last_mouse_pos = None;
         }
 
         let view_matrix = camera.get_view_matrix();
@@ -305,6 +314,66 @@ fn main() {
             shader_type: 2, // Gas giant shader
         };
         render_model(&mut framebuffer, &gas_uniforms, &planet_vertices, &planet_indices);
+
+        // Render Ice Planet (orbiting)
+        let ice_angle = time * 0.25;
+        let ice_orbit_radius = 10.0;
+        let ice_pos = Vec3::new(
+            (ice_angle + PI * 0.5).cos() * ice_orbit_radius,
+            -0.3,
+            (ice_angle + PI * 0.5).sin() * ice_orbit_radius,
+        );
+        let ice_rotation = Vec3::new(0.0, time * 0.4, 0.0);
+        let ice_model = create_model_matrix(ice_pos, 0.7, ice_rotation);
+        let ice_uniforms = Uniforms {
+            model_matrix: ice_model,
+            view_matrix,
+            projection_matrix,
+            viewport_matrix,
+            time,
+            shader_type: 4, // Ice planet shader
+        };
+        render_model(&mut framebuffer, &ice_uniforms, &planet_vertices, &planet_indices);
+
+        // Render Desert Planet (orbiting)
+        let desert_angle = time * 0.35;
+        let desert_orbit_radius = 6.5;
+        let desert_pos = Vec3::new(
+            (desert_angle + PI).cos() * desert_orbit_radius,
+            0.2,
+            (desert_angle + PI).sin() * desert_orbit_radius,
+        );
+        let desert_rotation = Vec3::new(0.0, time * 0.6, 0.0);
+        let desert_model = create_model_matrix(desert_pos, 0.6, desert_rotation);
+        let desert_uniforms = Uniforms {
+            model_matrix: desert_model,
+            view_matrix,
+            projection_matrix,
+            viewport_matrix,
+            time,
+            shader_type: 5, // Desert planet shader
+        };
+        render_model(&mut framebuffer, &desert_uniforms, &planet_vertices, &planet_indices);
+
+        // Render Volcanic Planet (orbiting)
+        let volcanic_angle = time * 0.4;
+        let volcanic_orbit_radius = 14.0;
+        let volcanic_pos = Vec3::new(
+            (volcanic_angle + PI * 1.5).cos() * volcanic_orbit_radius,
+            -0.5,
+            (volcanic_angle + PI * 1.5).sin() * volcanic_orbit_radius,
+        );
+        let volcanic_rotation = Vec3::new(0.0, time * 0.7, 0.0);
+        let volcanic_model = create_model_matrix(volcanic_pos, 0.9, volcanic_rotation);
+        let volcanic_uniforms = Uniforms {
+            model_matrix: volcanic_model,
+            view_matrix,
+            projection_matrix,
+            viewport_matrix,
+            time,
+            shader_type: 6, // Volcanic planet shader
+        };
+        render_model(&mut framebuffer, &volcanic_uniforms, &planet_vertices, &planet_indices);
 
         // Render Spaceship (TIE Fighter) - Static position
         let nave_pos = Vec3::new(6.0, 4.0, 9.0); // Posición fija más alejada y arriba

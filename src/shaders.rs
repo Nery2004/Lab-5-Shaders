@@ -160,3 +160,8 @@ pub fn shade_gas_giant(point: Vec3, time: f32) -> Vec3 {
 
     color.map(|x| x.max(0.0).min(1.0))
 }
+
+pub fn shade_spaceship(_point: Vec3, _time: f32) -> Vec3 {
+    // Color gris uniforme para toda la nave
+    Vec3::new(0.5, 0.5, 0.5)
+}

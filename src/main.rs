@@ -14,7 +14,7 @@ use framebuffer::Framebuffer;
 use vertex::Vertex;
 use obj::Obj;
 use triangle::triangle;
-use shaders::{vertex_shader, shade_star, shade_rocky, shade_gas_giant};
+use shaders::{vertex_shader, shade_star, shade_rocky, shade_gas_giant, shade_spaceship};
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -181,7 +181,8 @@ fn render_model(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertices: &[
                     0 => shade_star(fragment.vertex_position, uniforms.time),
                     1 => shade_rocky(fragment.vertex_position, uniforms.time),
                     2 => shade_gas_giant(fragment.vertex_position, uniforms.time),
-                    _ => Vec3::new(0.6, 0.6, 0.7), // Gris para la nave
+                    3 => shade_spaceship(fragment.vertex_position, uniforms.time),
+                    _ => Vec3::new(0.5, 0.5, 0.5), // Gris por defecto
                 };
 
                 let r = (color_vec.x * 255.0).clamp(0.0, 255.0) as u32;
@@ -218,7 +219,7 @@ fn main() {
     let projection_matrix = perspective(WIDTH as f32 / HEIGHT as f32, 45.0 * PI / 180.0, 0.1, 100.0);
     let viewport_matrix = create_viewport_matrix(WIDTH as f32, HEIGHT as f32);
 
-    let mut camera = Camera::new(Vec3::new(0.0, 3.0, 10.0));
+    let mut camera = Camera::new(Vec3::new(0.0, 4.0, 15.0));
     let mut time = 0.0;
     let mut last_mouse_pos: Option<(f32, f32)> = None;
 
@@ -252,9 +253,9 @@ fn main() {
 
         let view_matrix = camera.get_view_matrix();
 
-        // Render Sun (center, no rotation, bigger size)
+        // Render Sun (center, no rotation, much bigger size)
         let sun_rotation = Vec3::new(0.0, 0.0, 0.0); // No rotation
-        let sun_model = create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 2.5, sun_rotation);
+        let sun_model = create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 5.0, sun_rotation);
         let sun_uniforms = Uniforms {
             model_matrix: sun_model,
             view_matrix,
@@ -267,7 +268,7 @@ fn main() {
 
         // Render Rocky Planet (orbiting)
         let rocky_angle = time * 0.3;
-        let rocky_orbit_radius = 4.5;
+        let rocky_orbit_radius = 8.0;
         let rocky_pos = Vec3::new(
             rocky_angle.cos() * rocky_orbit_radius,
             0.0,
@@ -287,7 +288,7 @@ fn main() {
 
         // Render Gas Giant (orbiting in opposite direction)
         let gas_angle = time * 0.15;
-        let gas_orbit_radius = 7.0;
+        let gas_orbit_radius = 12.0;
         let gas_pos = Vec3::new(
             -gas_angle.cos() * gas_orbit_radius,
             0.5,
@@ -305,15 +306,9 @@ fn main() {
         };
         render_model(&mut framebuffer, &gas_uniforms, &planet_vertices, &planet_indices);
 
-        // Render Spaceship (TIE Fighter)
-        let nave_angle = time * 0.4;
-        let nave_orbit_radius = 5.5;
-        let nave_pos = Vec3::new(
-            nave_angle.sin() * nave_orbit_radius,
-            -0.5,
-            nave_angle.cos() * nave_orbit_radius,
-        );
-        let nave_rotation = Vec3::new(0.0, -nave_angle, 0.0); // Face forward in orbit
+        // Render Spaceship (TIE Fighter) - Static position
+        let nave_pos = Vec3::new(6.0, 4.0, 9.0); // Posición fija más alejada y arriba
+        let nave_rotation = Vec3::new(0.0, PI * 0.75, 0.0); // Ángulo fijo
         let nave_model = create_model_matrix(nave_pos, 0.3, nave_rotation);
         let nave_uniforms = Uniforms {
             model_matrix: nave_model,

@@ -1,11 +1,9 @@
-use nalgebra_glm::{Vec3, Mat4};
-use minifb::{Key, Window, WindowOptions, MouseButton, MouseMode};
-use std::time::Duration;
+use nalgebra_glm::{Vec3, Mat4, look_at, perspective};
+use minifb::{Key, Window, WindowOptions, MouseMode};
 use std::f32::consts::PI;
 
 mod framebuffer;
 mod triangle;
-mod line;
 mod vertex;
 mod obj;
 mod color;
@@ -16,11 +14,89 @@ use framebuffer::Framebuffer;
 use vertex::Vertex;
 use obj::Obj;
 use triangle::triangle;
-use shaders::vertex_shader;
-use color::Color;
+use shaders::{vertex_shader, shade_star, shade_rocky, shade_gas_giant};
+
+const WIDTH: usize = 800;
+const HEIGHT: usize = 600;
 
 pub struct Uniforms {
     model_matrix: Mat4,
+    view_matrix: Mat4,
+    projection_matrix: Mat4,
+    viewport_matrix: Mat4,
+    time: f32,
+    shader_type: u32,
+}
+
+struct Camera {
+    position: Vec3,
+    yaw: f32,
+    pitch: f32,
+    speed: f32,
+}
+
+impl Camera {
+    fn new(position: Vec3) -> Self {
+        Self {
+            position,
+            yaw: -90.0,
+            pitch: 0.0,
+            speed: 0.1,
+        }
+    }
+
+    fn get_direction(&self) -> Vec3 {
+        let yaw_rad = self.yaw.to_radians();
+        let pitch_rad = self.pitch.to_radians();
+        
+        Vec3::new(
+            yaw_rad.cos() * pitch_rad.cos(),
+            pitch_rad.sin(),
+            yaw_rad.sin() * pitch_rad.cos(),
+        ).normalize()
+    }
+
+    fn get_view_matrix(&self) -> Mat4 {
+        let direction = self.get_direction();
+        let target = self.position + direction;
+        look_at(&self.position, &target, &Vec3::new(0.0, 1.0, 0.0))
+    }
+
+    fn update_rotation(&mut self, delta_x: f32, delta_y: f32) {
+        self.yaw += delta_x * 0.1;
+        self.pitch -= delta_y * 0.1;
+        self.pitch = self.pitch.clamp(-89.0, 89.0);
+    }
+
+    fn move_forward(&mut self) {
+        let direction = self.get_direction();
+        self.position += direction * self.speed;
+    }
+
+    fn move_backward(&mut self) {
+        let direction = self.get_direction();
+        self.position -= direction * self.speed;
+    }
+
+    fn move_left(&mut self) {
+        let direction = self.get_direction();
+        let right = direction.cross(&Vec3::new(0.0, 1.0, 0.0)).normalize();
+        self.position -= right * self.speed;
+    }
+
+    fn move_right(&mut self) {
+        let direction = self.get_direction();
+        let right = direction.cross(&Vec3::new(0.0, 1.0, 0.0)).normalize();
+        self.position += right * self.speed;
+    }
+
+    fn move_up(&mut self) {
+        self.position.y += self.speed;
+    }
+
+    fn move_down(&mut self) {
+        self.position.y -= self.speed;
+    }
 }
 
 fn create_model_matrix(translation: Vec3, scale: f32, rotation: Vec3) -> Mat4 {
@@ -51,197 +127,182 @@ fn create_model_matrix(translation: Vec3, scale: f32, rotation: Vec3) -> Mat4 {
 
     let rotation_matrix = rotation_matrix_z * rotation_matrix_y * rotation_matrix_x;
 
-    let transform_matrix = Mat4::new(
-        scale, 0.0,   0.0,   translation.x,
-        0.0,   scale, 0.0,   translation.y,
-        0.0,   0.0,   scale, translation.z,
+    let scale_matrix = Mat4::new(
+        scale, 0.0,   0.0,   0.0,
+        0.0,   scale, 0.0,   0.0,
+        0.0,   0.0,   scale, 0.0,
         0.0,   0.0,   0.0,   1.0,
     );
 
-    transform_matrix * rotation_matrix
+    let translation_matrix = Mat4::new(
+        1.0, 0.0, 0.0, translation.x,
+        0.0, 1.0, 0.0, translation.y,
+        0.0, 0.0, 1.0, translation.z,
+        0.0, 0.0, 0.0, 1.0,
+    );
+
+    translation_matrix * rotation_matrix * scale_matrix
 }
 
-fn render_nave(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertices: &[Vertex], indices: &[u32]) {
-    
-    // Vertex Shader Stage - transformar todos los vértices
+fn create_viewport_matrix(width: f32, height: f32) -> Mat4 {
+    Mat4::new(
+        width / 2.0, 0.0, 0.0, width / 2.0,
+        0.0, -height / 2.0, 0.0, height / 2.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    )
+}
+
+fn render_model(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertices: &[Vertex], indices: &[u32]) {
     let mut transformed_vertices = Vec::with_capacity(vertices.len());
     for vertex in vertices {
-        let transformed = vertex_shader(vertex, uniforms);
-        transformed_vertices.push(transformed);
+        transformed_vertices.push(vertex_shader(vertex, uniforms));
     }
 
-    // Recorrer manualmente las caras usando los índices
-    // Cada 3 índices forman un triángulo
-    for triangle_idx in (0..indices.len()).step_by(3) {
-        if triangle_idx + 2 < indices.len() {
-            let i1 = indices[triangle_idx] as usize;
-            let i2 = indices[triangle_idx + 1] as usize;
-            let i3 = indices[triangle_idx + 2] as usize;
+    // Process triangles with early culling
+    for i in (0..indices.len()).step_by(3) {
+        let v1 = &transformed_vertices[indices[i] as usize];
+        let v2 = &transformed_vertices[indices[i+1] as usize];
+        let v3 = &transformed_vertices[indices[i+2] as usize];
 
-            // Verificar que los índices estén dentro del rango
-            if i1 < transformed_vertices.len() && i2 < transformed_vertices.len() && i3 < transformed_vertices.len() {
-                let v1 = &transformed_vertices[i1];
-                let v2 = &transformed_vertices[i2];
-                let v3 = &transformed_vertices[i3];
+        // Early clip space culling - skip triangles completely outside view
+        let clip_coords = [v1.transformed_position, v2.transformed_position, v3.transformed_position];
+        if clip_coords.iter().all(|v| v.x.abs() > v.w.abs() * 1.5 || v.y.abs() > v.w.abs() * 1.5 || v.z < -v.w || v.z > v.w) {
+            continue;
+        }
 
-                // Dibujar el triángulo
-                let fragments = triangle(v1, v2, v3);
+        let fragments = triangle(v1, v2, v3, uniforms);
+        for fragment in fragments {
+            let x = fragment.position.x as usize;
+            let y = fragment.position.y as usize;
+
+            if x < WIDTH && y < HEIGHT {
+                let color_vec = match uniforms.shader_type {
+                    0 => shade_star(fragment.vertex_position, uniforms.time),
+                    1 => shade_rocky(fragment.vertex_position, uniforms.time),
+                    2 => shade_gas_giant(fragment.vertex_position, uniforms.time),
+                    _ => Vec3::new(1.0, 1.0, 1.0),
+                };
+
+                let r = (color_vec.x * 255.0).clamp(0.0, 255.0) as u32;
+                let g = (color_vec.y * 255.0).clamp(0.0, 255.0) as u32;
+                let b = (color_vec.z * 255.0).clamp(0.0, 255.0) as u32;
+                let color = (r << 16) | (g << 8) | b;
                 
-                // Procesar fragmentos
-                for fragment in fragments {
-                    let x = fragment.position.x as usize;
-                    let y = fragment.position.y as usize;
-                    if x < framebuffer.width && y < framebuffer.height {
-                        let color = fragment.color.to_hex();
-                        framebuffer.set_current_color(color);
-                        framebuffer.point(x, y, fragment.depth);
-                    }
-                }
+                framebuffer.set_current_color(color);
+                framebuffer.point(x, y, fragment.depth);
             }
         }
     }
 }
 
 fn main() {
-    let window_width = 800;
-    let window_height = 600;
-    let framebuffer_width = 800;
-    let framebuffer_height = 600;
-    let frame_delay = Duration::from_millis(16);
-
-    let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
     let mut window = Window::new(
-        "Proyecto 1 - Nave Espacial",
-        window_width,
-        window_height,
+        "Lab 5 - Sistema Solar (WASD: mover, Space/Shift: arriba/abajo, Mouse: rotar cámara)",
+        WIDTH,
+        HEIGHT,
         WindowOptions::default(),
     )
     .unwrap();
 
-    window.set_position(500, 500);
-    window.update();
-
-    // Configurar colores
-    framebuffer.set_background_color(0x001122); // Fondo negro para el espacio
+    let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
     
-    // Parámetros de transformación
-    let mut translation = Vec3::new(400.0, 300.0, 0.0); // Centrar en pantalla
-    let mut rotation = Vec3::new(0.0, 0.0, 0.0);
-    let mut scale = 100.0f32;
+    // Load planet model for all celestial bodies
+    let planet_obj = Obj::load("assets/planeta.obj").expect("No se pudo cargar planeta.obj");
+    let (planet_vertices, planet_indices) = planet_obj.get_vertex_and_index_arrays();
 
-    // Cargar el modelo de la nave
-    let obj = match Obj::load("assets/CazaTie.obj") {
-        Ok(obj) => {
-            println!("¡Modelo CazaTie.obj cargado exitosamente!");
-            obj
-        },
-        Err(e) => {
-            eprintln!("Error cargando CazaTie.obj: {:?}", e);
-            eprintln!("Asegúrate de que el archivo assets/CazaTie.obj existe");
-            return;
-        }
-    };
+    let projection_matrix = perspective(WIDTH as f32 / HEIGHT as f32, 45.0 * PI / 180.0, 0.1, 100.0);
+    let viewport_matrix = create_viewport_matrix(WIDTH as f32, HEIGHT as f32);
 
-    let (vertices, indices) = obj.get_vertex_and_index_arrays();
-    println!("Nave cargada: {} vértices, {} triángulos", vertices.len(), indices.len() / 3);
-
-    // Variables para el control del mouse
+    let mut camera = Camera::new(Vec3::new(0.0, 3.0, 10.0));
+    let mut time = 0.0;
     let mut last_mouse_pos: Option<(f32, f32)> = None;
-    let mouse_sensitivity = 0.005;
 
-    while window.is_open() {
-        if window.is_key_down(Key::Escape) {
-            break;
-        }
+    println!("Controles:");
+    println!("  WASD: Mover cámara");
+    println!("  Space/Shift: Subir/Bajar");
+    println!("  Mouse: Rotar cámara");
+    println!("  ESC: Salir");
 
-        // Manejar rotación con el mouse
-        if let Some((mx, my)) = window.get_mouse_pos(MouseMode::Clamp) {
-            if window.get_mouse_down(MouseButton::Left) {
-                if let Some((last_x, last_y)) = last_mouse_pos {
-                    let delta_x = mx - last_x;
-                    let delta_y = my - last_y;
-                    
-                    // Rotar el modelo basado en el movimiento del mouse
-                    rotation.y += delta_x * mouse_sensitivity; // rotación horizontal (yaw)
-                    rotation.x += delta_y * mouse_sensitivity; // rotación vertical (pitch)
-                }
-                last_mouse_pos = Some((mx, my));
-            } else {
-                last_mouse_pos = None;
-            }
-        }
-
-        handle_input(&window, &mut translation, &mut rotation, &mut scale);
-
-        // Limpiar framebuffer
+    while window.is_open() && !window.is_key_down(Key::Escape) {
         framebuffer.clear();
+        time += 0.01;
 
-        // Crear matriz de transformación
-        let model_matrix = create_model_matrix(translation, scale, rotation);
-        let uniforms = Uniforms { model_matrix };
+        // Camera movement controls
+        if window.is_key_down(Key::W) { camera.move_forward(); }
+        if window.is_key_down(Key::S) { camera.move_backward(); }
+        if window.is_key_down(Key::A) { camera.move_left(); }
+        if window.is_key_down(Key::D) { camera.move_right(); }
+        if window.is_key_down(Key::Space) { camera.move_up(); }
+        if window.is_key_down(Key::LeftShift) { camera.move_down(); }
 
-        // Renderizar la nave
-        framebuffer.set_current_color(0xFFDD44); // Color blanco para la nave
-        render_nave(&mut framebuffer, &uniforms, &vertices, &indices);
-
-        // Actualizar ventana
-        window
-            .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
-            .unwrap();
-
-        std::thread::sleep(frame_delay);
-    }
-
-    println!("¡Renderizado completado!");
-}
-
-fn handle_input(window: &Window, translation: &mut Vec3, rotation: &mut Vec3, scale: &mut f32) {
-    let move_speed = 5.0;
-    let rotation_speed = PI / 30.0;
-    let scale_speed = 2.0;
-
-    // Movimiento
-    if window.is_key_down(Key::Right) {
-        translation.x += move_speed;
-    }
-    if window.is_key_down(Key::Left) {
-        translation.x -= move_speed;
-    }
-    if window.is_key_down(Key::Up) {
-        translation.y -= move_speed;
-    }
-    if window.is_key_down(Key::Down) {
-        translation.y += move_speed;
-    }
-
-    // Escala
-    if window.is_key_down(Key::S) {
-        *scale += scale_speed;
-    }
-    if window.is_key_down(Key::A) {
-        *scale -= scale_speed;
-        if *scale < 1.0 {
-            *scale = 1.0;
+        // Mouse camera control
+        if let Some((mx, my)) = window.get_mouse_pos(MouseMode::Discard) {
+            if let Some((last_x, last_y)) = last_mouse_pos {
+                let delta_x = mx - last_x;
+                let delta_y = my - last_y;
+                camera.update_rotation(delta_x, delta_y);
+            }
+            last_mouse_pos = Some((mx, my));
         }
-    }
 
-    // Rotación
-    if window.is_key_down(Key::Q) {
-        rotation.x -= rotation_speed;
-    }
-    if window.is_key_down(Key::W) {
-        rotation.x += rotation_speed;
-    }
-    if window.is_key_down(Key::E) {
-        rotation.y -= rotation_speed;
-    }
-    if window.is_key_down(Key::R) {
-        rotation.y += rotation_speed;
-    }
-    if window.is_key_down(Key::T) {
-        rotation.z -= rotation_speed;
-    }
-    if window.is_key_down(Key::Y) {
-        rotation.z += rotation_speed;
+        let view_matrix = camera.get_view_matrix();
+
+        // Render Sun (center)
+        let sun_rotation = Vec3::new(0.0, time * 0.2, 0.0);
+        let sun_model = create_model_matrix(Vec3::new(0.0, 0.0, 0.0), 1.5, sun_rotation);
+        let sun_uniforms = Uniforms {
+            model_matrix: sun_model,
+            view_matrix,
+            projection_matrix,
+            viewport_matrix,
+            time,
+            shader_type: 0, // Star shader
+        };
+        render_model(&mut framebuffer, &sun_uniforms, &planet_vertices, &planet_indices);
+
+        // Render Rocky Planet (orbiting)
+        let rocky_angle = time * 0.3;
+        let rocky_orbit_radius = 4.5;
+        let rocky_pos = Vec3::new(
+            rocky_angle.cos() * rocky_orbit_radius,
+            0.0,
+            rocky_angle.sin() * rocky_orbit_radius,
+        );
+        let rocky_rotation = Vec3::new(0.0, time * 0.5, 0.0);
+        let rocky_model = create_model_matrix(rocky_pos, 0.8, rocky_rotation);
+        let rocky_uniforms = Uniforms {
+            model_matrix: rocky_model,
+            view_matrix,
+            projection_matrix,
+            viewport_matrix,
+            time,
+            shader_type: 1, // Rocky shader
+        };
+        render_model(&mut framebuffer, &rocky_uniforms, &planet_vertices, &planet_indices);
+
+        // Render Gas Giant (orbiting in opposite direction)
+        let gas_angle = time * 0.15;
+        let gas_orbit_radius = 7.0;
+        let gas_pos = Vec3::new(
+            -gas_angle.cos() * gas_orbit_radius,
+            0.5,
+            gas_angle.sin() * gas_orbit_radius,
+        );
+        let gas_rotation = Vec3::new(0.0, time * 0.3, 0.0);
+        let gas_model = create_model_matrix(gas_pos, 1.2, gas_rotation);
+        let gas_uniforms = Uniforms {
+            model_matrix: gas_model,
+            view_matrix,
+            projection_matrix,
+            viewport_matrix,
+            time,
+            shader_type: 2, // Gas giant shader
+        };
+        render_model(&mut framebuffer, &gas_uniforms, &planet_vertices, &planet_indices);
+
+        window
+            .update_with_buffer(&framebuffer.buffer, WIDTH, HEIGHT)
+            .unwrap();
     }
 }

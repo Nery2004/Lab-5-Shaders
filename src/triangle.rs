@@ -1,61 +1,93 @@
 use nalgebra_glm::{Vec3, dot};
 use crate::fragment::Fragment;
 use crate::vertex::Vertex;
-use crate::line::line;
 use crate::color::Color;
+use crate::Uniforms;
 
-pub fn _triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex) -> Vec<Fragment> {
+pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex, uniforms: &Uniforms) -> Vec<Fragment> {
   let mut fragments = Vec::new();
 
-  // Draw the three sides of the triangle
-  fragments.extend(line(v1, v2));
-  fragments.extend(line(v2, v3));
-  fragments.extend(line(v3, v1));
+  // Perform perspective division to get screen-space coordinates
+  let a_w = v1.transformed_position.w;
+  let b_w = v2.transformed_position.w;
+  let c_w = v3.transformed_position.w;
 
-  fragments
-}
+  if a_w.abs() < 1e-6 || b_w.abs() < 1e-6 || c_w.abs() < 1e-6 {
+      return fragments;
+  }
 
-pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex) -> Vec<Fragment> {
-  let mut fragments = Vec::new();
-  let (a, b, c) = (v1.transformed_position, v2.transformed_position, v3.transformed_position);
+  let a = Vec3::new(
+      v1.transformed_position.x / a_w,
+      v1.transformed_position.y / a_w,
+      v1.transformed_position.z / a_w,
+  );
+  let b = Vec3::new(
+      v2.transformed_position.x / b_w,
+      v2.transformed_position.y / b_w,
+      v2.transformed_position.z / b_w,
+  );
+  let c = Vec3::new(
+      v3.transformed_position.x / c_w,
+      v3.transformed_position.y / c_w,
+      v3.transformed_position.z / c_w,
+  );
 
-  let (min_x, min_y, max_x, max_y) = calculate_bounding_box(&a, &b, &c);
+  // Apply viewport transformation
+  let transform_to_screen = |pos: Vec3| -> Vec3 {
+      let screen_x = (pos.x * 0.5 + 0.5) * 800.0;
+      let screen_y = (1.0 - (pos.y * 0.5 + 0.5)) * 600.0;
+      Vec3::new(screen_x, screen_y, pos.z)
+  };
 
-  let light_dir = Vec3::new(0.0, 0.0, -1.0).normalize(); // Luz frontal más suave
+  let a_screen = transform_to_screen(a);
+  let b_screen = transform_to_screen(b);
+  let c_screen = transform_to_screen(c);
 
-  let triangle_area = edge_function(&a, &b, &c);
+  let (min_x, min_y, max_x, max_y) = calculate_bounding_box(&a_screen, &b_screen, &c_screen);
 
-  // Iterate over each pixel in the bounding box
+  // Clamp to screen bounds
+  let min_x = min_x.max(0);
+  let min_y = min_y.max(0);
+  let max_x = max_x.min(799);
+  let max_y = max_y.min(599);
+
+  // Skip if completely outside screen
+  if min_x > 799 || min_y > 599 || max_x < 0 || max_y < 0 {
+      return fragments;
+  }
+
+  let triangle_area = edge_function(&a_screen, &b_screen, &c_screen);
+
+  if triangle_area.abs() < 1e-6 {
+      return fragments;
+  }
+
+  // Backface culling
+  if triangle_area < 0.0 {
+      return fragments;
+  }
+
   for y in min_y..=max_y {
     for x in min_x..=max_x {
       let point = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 0.0);
 
-      // Calculate barycentric coordinates
-      let (w1, w2, w3) = barycentric_coordinates(&point, &a, &b, &c, triangle_area);
+      let (w1, w2, w3) = barycentric_coordinates(&point, &a_screen, &b_screen, &c_screen, triangle_area);
 
-      // Check if the point is inside the triangle
-      if w1 >= 0.0 && w1 <= 1.0 && 
-         w2 >= 0.0 && w2 <= 1.0 &&
-         w3 >= 0.0 && w3 <= 1.0 {
-        // Interpolate normal
-        // let normal = v1.transformed_normal * w1 + v2.transformed_normal * w2 + v3.transformed_normal * w3;
-        let normal = v1.transformed_normal;
-        let normal = normal.normalize();
+      if w1 >= 0.0 && w2 >= 0.0 && w3 >= 0.0 {
+        let inv_w = 1.0/a_w * w1 + 1.0/b_w * w2 + 1.0/c_w * w3;
+        let w = 1.0/inv_w;
 
-        // Calculate lighting intensity with ambient light
-        let ambient = 0.5; // Luz ambiente para iluminación más pareja
-        let diffuse = dot(&normal, &light_dir).max(0.0);
-        let intensity = ambient + diffuse * 0.5; // Mezcla ambiente + difusa
+        let vertex_position = (v1.position * (w1 / a_w) + v2.position * (w2 / b_w) + v3.position * (w3 / c_w)) * w;
+        
+        let depth = a_screen.z * w1 + b_screen.z * w2 + c_screen.z * w3;
 
-        // Create a gray color and apply lighting
-        let base_color = Color::new(140, 140, 140); // Gris medio
-        let lit_color = base_color * intensity.clamp(0.0, 1.0);
-
-        // Interpolate depth
-        // let depth = a.z * w1 + b.z * w2 + c.z * w3;
-        let depth = a.z;
-
-        fragments.push(Fragment::new(x as f32, y as f32, lit_color, depth));
+        fragments.push(Fragment::new_with_vertex_position(
+            x as f32, 
+            y as f32, 
+            Color::new(255, 255, 255),
+            depth,
+            vertex_position
+        ));
       }
     }
   }
